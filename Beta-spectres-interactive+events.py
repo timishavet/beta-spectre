@@ -29,7 +29,7 @@ def select_nuclide(df):
     
     while True:
         try:
-            choice = int(input(f"\nВыберите радионуклид (1-{len(df)}): "))
+            choice = int(input(f"\n Выберите радионуклид (1-{len(df)}): "))
             if 1 <= choice <= len(df):
                 selected_row = df.iloc[choice-1]
                 print(f"\nВыбран: {selected_row['nuclide']}")
@@ -117,34 +117,66 @@ def spectrum_vs_kinetic_energy_single(Q, T_e):
     return spectrum
 
 def generate_events(decay_data, num_events=100):
-    """Генерация событий методом Монте-Карло"""
-    print(f"\nГенерация {num_events} событий...")
+    """Генерация событий методом Монте-Карло (оптимизированная версия)"""
+    print(f"\n Генерация {num_events} событий...")
+    
+    import time  # Добавляем импорт времени
+    start_time = time.time()  # Засекаем время начала
     
     nuclide = decay_data['nuclide']
     decay_channels = decay_data['decay_channels']
     
-    # Находим максимальную энергию и максимальное значение спектра
+    # 1. Находим максимальную энергию
     max_Q = max(Q for Q, _ in decay_channels)
     
-    # Создаем детальную сетку для нахождения максимума спектра
+    # 2. Создаем детальную сетку для вычисления спектра
     T_detailed = np.linspace(0, max_Q - 0.001, 10000)
-    total_spectrum_detailed = np.zeros_like(T_detailed)
     
-    # Вычисляем суммарный спектр на детальной сетке
+    # 3. ОДИН РАЗ вычисляем суммарный спектр
+    total_spectrum = np.zeros_like(T_detailed)
+    
     for Q, prob in decay_channels:
-        spectrum_T = spectrum_vs_kinetic_energy_single(Q, T_detailed)
-        area_T = np.trapz(spectrum_T, T_detailed)
-        if area_T > 0:
-            spectrum_T = spectrum_T / area_T * prob
-        total_spectrum_detailed += spectrum_T
+        # Вычисляем спектр для этого канала
+        spectrum = spectrum_vs_kinetic_energy_single(Q, T_detailed)
+        
+        # Вычисляем площадь (интеграл) под спектром
+        area = np.trapz(spectrum, T_detailed)
+        
+        if area > 0:
+            # Нормируем спектр на 1 и умножаем на вероятность канала
+            spectrum = spectrum / area * prob
+        
+        # Добавляем в суммарный спектр
+        total_spectrum += spectrum
     
-    # Находим максимальное значение спектра
-    max_spectrum = np.max(total_spectrum_detailed)
+    # 4. Находим максимальное значение суммарного спектра
+    max_spectrum = np.max(total_spectrum)
     
     print(f"Максимальная энергия: {max_Q:.4f} МэВ")
-    print(f"Максимум спектра: {max_spectrum:.4f}")
+    print(f"Максимум суммарного спектра: {max_spectrum:.4f}")
     
-    # Генерация событий
+    # 5. Функция для быстрого получения значения спектра в точке x
+    def get_spectrum_value(x):
+        """Быстрое получение значения суммарного спектра в точке x"""
+        if x <= 0 or x >= max_Q:
+            return 0.0
+        
+        # Находим индекс ближайшей точки слева на сетке T_detailed
+        idx = np.searchsorted(T_detailed, x) - 1
+        
+        # Проверяем границы
+        if idx < 0:
+            return total_spectrum[0]
+        if idx >= len(T_detailed) - 1:
+            return total_spectrum[-1]
+        
+        # Линейная интерполяция между двумя ближайшими точками
+        x1, x2 = T_detailed[idx], T_detailed[idx + 1]
+        y1, y2 = total_spectrum[idx], total_spectrum[idx + 1]
+        
+        return y1 + (y2 - y1) * (x - x1) / (x2 - x1)
+    
+    # 6. Генерация событий
     events = []
     attempts = 0
     max_attempts = num_events * 1000  # Защита от бесконечного цикла
@@ -154,20 +186,21 @@ def generate_events(decay_data, num_events=100):
         
         # Генерируем случайную точку
         x = random.uniform(0, max_Q)  # энергия
-        y = random.uniform(0, max_spectrum * 1.1)  # значение спектра (с небольшим запасом)
+        y = random.uniform(0, max_spectrum)  # значение спектра
         
-        # Вычисляем значение спектра в этой точке
-        spectrum_value = 0
-        for Q, prob in decay_channels:
-            spectrum_T = spectrum_vs_kinetic_energy_single(Q, np.array([x]))
-            area_T = np.trapz(spectrum_vs_kinetic_energy_single(Q, T_detailed), T_detailed)
-            if area_T > 0:
-                spectrum_T = spectrum_T / area_T * prob
-            spectrum_value += spectrum_T[0]
+        # БЫСТРО получаем значение спектра из предвычисленного суммарного спектра
+        spectrum_value = get_spectrum_value(x)
         
         # Проверяем, попадает ли точка под кривую
         if y <= spectrum_value:
             events.append(x)
+    
+    # 7. Расчет времени и скорости
+    total_time = time.time() - start_time  # Общее время выполнения
+    speed = len(events) / total_time  # Скорость генерации (событий/сек)
+    
+    print(f"Время генерации: {total_time:.3f} сек")
+    print(f"Скорость генерации: {speed:.0f} событий/сек")
     
     efficiency = len(events) / attempts * 100
     print(f"Сгенерировано {len(events)} событий из {attempts} попыток (эффективность: {efficiency:.2f}%)")
@@ -194,7 +227,7 @@ def plot_generated_events(events, decay_data):
     
     # Создаем теоретический спектр
     max_Q = max(Q for Q, _ in decay_data['decay_channels'])
-    T_range = np.linspace(0, max_Q - 0.001, 1000)
+    T_range = np.linspace(0, max_Q - 0.001, 1001)
     total_spectrum_T = np.zeros_like(T_range)
     
     for Q, prob in decay_data['decay_channels']:
@@ -268,7 +301,7 @@ def plot_spectra(decay_data):
         total_spectrum_T += spectrum_T
 
     # После цикла расчета спектров добавим проверку:
-    print("\nПроверка нормировки...")
+    print("\n Проверка нормировки...")
 
      # Проверка для импульсных спектров
     for i, (Q, prob) in enumerate(decay_channels):
@@ -358,7 +391,7 @@ if __name__ == "__main__":
                 plot_spectra(decay_data)
                 
                 # Спрашиваем о генерации событий
-                generate_choice = input("\nХотите сгенерировать события? (y/n): ").lower()
+                generate_choice = input("\n Хотите сгенерировать события? (y/n): ").lower()
                 if generate_choice == 'y':
                     try:
                         num_events = int(input("Сколько событий сгенерировать? "))
@@ -374,7 +407,7 @@ if __name__ == "__main__":
                         print("Пожалуйста, введите целое число!")
             
             # Спрашиваем, продолжить ли
-            continue_choice = input("\nХотите выбрать другой радионуклид? (y/n): ").lower()
+            continue_choice = input("\n Хотите выбрать другой радионуклид? (y/n): ").lower()
             if continue_choice != 'y':
                 print("Выход из программы.")
                 break
