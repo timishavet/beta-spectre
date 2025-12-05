@@ -7,14 +7,14 @@ import random
 # Константы
 m_e = 0.511  # масса электрона в МэВ/c²
 
-def load_nuclide_database(filename='beta-database.csv'):
+def load_nuclide_database(database='beta-database.csv'):
     """Загрузка базы данных радионуклидов"""
     try:
-        df = pd.read_csv(filename)
+        df = pd.read_csv(database)
         print(f"База данных загружена успешно! Найдено {len(df)} радионуклидов")
         return df
     except FileNotFoundError:
-        print(f"Ошибка: файл {filename} не найден!")
+        print(f"Ошибка: файл {database} не найден!")
         return None
     except Exception as e:
         print(f"Ошибка при загрузке файла: {e}")
@@ -212,14 +212,14 @@ def generate_events(decay_data, num_events=100):
 
 def save_events_to_file(events, nuclide):
     """Сохранение событий в текстовый файл"""
-    filename = f"{nuclide.replace(' ', '_')}_events.txt"
+    file_events = f"{nuclide.replace(' ', '_')}_events.txt"
     
-    with open(filename, 'w') as f:
+    with open(file_events, 'w') as f:
         for event in events:
             f.write(f"{event:.6f}\n")
     
-    print(f"События сохранены в файл: {filename}")
-    return filename
+    print(f"События сохранены в файл: {file_events}")
+    return file_events
 
 def plot_generated_events(events, decay_data):
     """Визуализация сгенерированных событий"""
@@ -464,8 +464,8 @@ if __name__ == "__main__":
     print("Загрузка базы данных радионуклидов...")
     
     # Загружаем базу данных (можно указать другой файл)
-    filename = 'beta-database.csv'
-    df = load_nuclide_database(filename)
+    database = 'beta-database.csv'
+    df = load_nuclide_database(database)
     
     if df is not None:
         while True:
@@ -486,7 +486,7 @@ if __name__ == "__main__":
                         num_events = int(input("Сколько событий сгенерировать? "))
                         if num_events > 0:
                             events = generate_events(decay_data, num_events)
-                            filename = save_events_to_file(events, decay_data['nuclide'])
+                            file_events = save_events_to_file(events, decay_data['nuclide'])
                             
                             # Показываем гистограмму сгенерированных событий (ПРАВИЛЬНАЯ версия)
                             plot_generated_events(events, decay_data)
