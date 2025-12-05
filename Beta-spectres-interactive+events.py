@@ -318,7 +318,7 @@ def plot_spectra(decay_data):
     plt.figure(figsize=(14, 10))
     
     # График 1: Зависимость от импульса
-    plt.subplot(2, 2, 1)
+    plt.subplot(2, 1, 1)
     for i, (Q, prob) in enumerate(decay_channels):
         plt.plot(p_range, spectra_p[i], '--', linewidth=1.5, alpha=0.7, 
                  label=f'Q={Q:.3f} МэВ ({prob:.1%})')
@@ -330,7 +330,7 @@ def plot_spectra(decay_data):
     plt.grid(True, alpha=0.3)
     
     # График 2: Зависимость от кинетической энергии
-    plt.subplot(2, 2, 2)
+    plt.subplot(2, 1, 2)
     for i, (Q, prob) in enumerate(decay_channels):
         plt.plot(T_range, spectra_T[i], '--', linewidth=1.5, alpha=0.7, 
                  label=f'Q={Q:.3f} МэВ ({prob:.1%})')
@@ -341,24 +341,113 @@ def plot_spectra(decay_data):
     plt.legend()
     plt.grid(True, alpha=0.3)
     
-    # График 3: Только суммарные спектры
-    plt.subplot(2, 2, 3)
-    plt.plot(p_range, total_spectrum_p, 'b-', linewidth=2)
-    plt.xlabel('Импульс p (МэВ/c)', fontsize=12)
-    plt.ylabel('Нормированный спектр dλ/dp', fontsize=12)
-    plt.title(f'Суммарный спектр {nuclide}\nЗависимость от импульса')
-    plt.grid(True, alpha=0.3)
-    
-    plt.subplot(2, 2, 4)
-    plt.plot(T_range, total_spectrum_T, 'r-', linewidth=2)
-    plt.xlabel('Кинетическая энергия Tₑ (МэВ)', fontsize=12)
-    plt.ylabel('Нормированный спектр dλ/dTₑ', fontsize=12)
-    plt.title(f'Суммарный спектр {nuclide}\nЗависимость от кинетической энергии')
-    plt.grid(True, alpha=0.3)
-    
     plt.tight_layout()
     plt.show()
+
+    # Спрашиваем пользователя о сохранении
+    print("\n" + "="*60)
+    save_choice = input("Сохранить график и данные спектра? (y/n): ").strip().lower()
     
+    if save_choice == 'y':
+        # Создаем имя файла без пробелов и специальных символов
+        safe_nuclide = nuclide.replace(' ', '_').replace('-', '_')
+        
+        # 1. Сохраняем график как PDF
+        pdf_filename = f"Beta_spectrum_of_{safe_nuclide}.pdf"
+        
+        # Создаем новый рисунок для сохранения
+        plt.figure(figsize=(14, 10))
+        
+            # График 1: Зависимость от импульса
+        plt.subplot(2, 1, 1)
+        for i, (Q, prob) in enumerate(decay_channels):
+            plt.plot(p_range, spectra_p[i], '--', linewidth=1.5, alpha=0.7, 
+                    label=f'Q={Q:.3f} МэВ ({prob:.1%})')
+        plt.plot(p_range, total_spectrum_p, 'k-', linewidth=3, label='Суммарный спектр')
+        plt.xlabel('Импульс p (МэВ/c)', fontsize=12)
+        plt.ylabel('Нормированный спектр dλ/dp', fontsize=12)
+        plt.title(f'Спектр бета-распада {nuclide}\nЗависимость от импульса')
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+        
+        # График 2: Зависимость от кинетической энергии
+        plt.subplot(2, 1, 2)
+        for i, (Q, prob) in enumerate(decay_channels):
+            plt.plot(T_range, spectra_T[i], '--', linewidth=1.5, alpha=0.7, 
+                    label=f'Q={Q:.3f} МэВ ({prob:.1%})')
+        plt.plot(T_range, total_spectrum_T, 'k-', linewidth=3, label='Суммарный спектр')
+        plt.xlabel('Кинетическая энергия Tₑ (МэВ)', fontsize=12)
+        plt.ylabel('Нормированный спектр dλ/dTₑ', fontsize=12)
+        plt.title(f'Спектр бета-распада {nuclide}\nЗависимость от кинетической энергии')
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+        
+        plt.tight_layout()  
+        # Сохраняем как PDF
+        plt.savefig(filename, format='pdf', dpi=300, bbox_inches='tight')
+        plt.close()  # Закрываем рисунок чтобы не висел в памяти 
+
+        # 2. Сохраняем данные импульса в текстовый файл
+        momentum_filename = f"{safe_nuclide}_momentum_spectrum.txt"
+        with open(momentum_filename, 'w') as f:
+            # Заголовок с информацией о нуклиде
+            f.write(f"# Спектр бета-распада {nuclide}\n")
+            f.write(f"# Зависимость от импульса\n")
+            f.write(f"# Период полураспада: {half_life}\n")
+            f.write(f"# Количество каналов: {len(decay_channels)}\n")
+            
+            # Заголовки колонок
+            header = "Импульс[МэВ/c]"
+            for i, (Q, prob) in enumerate(decay_channels):
+                header += f"\tКанал_{i+1}_Q={Q:.3f}_prob={prob:.3f}"
+            header += "\tСуммарный_спектр"
+            f.write(header + "\n")
+            
+            # Данные
+            for j in range(len(p_range)):
+                line = f"{p_range[j]:.6f}"
+                # Спектры для каждого канала
+                for i in range(len(decay_channels)):
+                    line += f"\t{spectra_p[i][j]:.6f}"
+                # Суммарный спектр
+                line += f"\t{total_spectrum_p[j]:.6f}"
+                f.write(line + "\n")
+        
+        # 3. Сохраняем данные кинетической энергии в текстовый файл
+        energy_filename = f"{safe_nuclide}_energy_spectrum.txt"
+        with open(energy_filename, 'w') as f:
+            # Заголовок с информацией о нуклиде
+            f.write(f"# Спектр бета-распада {nuclide}\n")
+            f.write(f"# Зависимость от кинетической энергии\n")
+            f.write(f"# Период полураспада: {half_life}\n")
+            f.write(f"# Количество каналов: {len(decay_channels)}\n")
+            
+            # Заголовки колонок
+            header = "Кинетическая_энергия[МэВ]"
+            for i, (Q, prob) in enumerate(decay_channels):
+                header += f"\tКанал_{i+1}_Q={Q:.3f}_prob={prob:.3f}"
+            header += "\tСуммарный_спектр"
+            f.write(header + "\n")
+            
+            # Данные
+            for j in range(len(T_range)):
+                line = f"{T_range[j]:.6f}"
+                # Спектры для каждого канала
+                for i in range(len(decay_channels)):
+                    line += f"\t{spectra_T[i][j]:.6f}"
+                # Суммарный спектр
+                line += f"\t{total_spectrum_T[j]:.6f}"
+                f.write(line + "\n")
+        
+        print("\n" + "="*60)
+        print("СОХРАНЕНО:")
+        print(f"1. График: {pdf_filename}")
+        print(f"2. Данные импульса: {momentum_filename}")
+        print(f"3. Данные энергии: {energy_filename}")
+        
+    else:
+        print("График и данные не сохранены.")
+           
     # Вывод информации о каналах распада
     print("\n" + "="*60)
     print(f"Параметры распада для {nuclide}:")
