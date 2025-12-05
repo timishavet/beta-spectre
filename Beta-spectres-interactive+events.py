@@ -351,7 +351,7 @@ def plot_spectra(decay_data):
     if save_choice == 'y':
         # Создаем имя файла без пробелов и специальных символов
         safe_nuclide = nuclide.replace(' ', '_').replace('-', '_')
-        
+
         # 1. Сохраняем график как PDF
         pdf_filename = f"Beta_spectrum_of_{safe_nuclide}.pdf"
         
@@ -384,7 +384,7 @@ def plot_spectra(decay_data):
         
         plt.tight_layout()  
         # Сохраняем как PDF
-        plt.savefig(filename, format='pdf', dpi=300, bbox_inches='tight')
+        plt.savefig(pdf_filename, format='pdf', dpi=300, bbox_inches='tight')
         plt.close()  # Закрываем рисунок чтобы не висел в памяти 
 
         # 2. Сохраняем данные импульса в текстовый файл
