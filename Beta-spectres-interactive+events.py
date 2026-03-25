@@ -72,6 +72,7 @@ def parse_decay_data(row):
     for probability, max_decay_energy in zip(probabilities, max_decay_energies):
         decay_channels.append([max_decay_energy, probability])
     
+    """
     # Нормируем вероятности
     total_probability = sum(probability for _, probability in decay_channels)
     if total_probability > 0:
@@ -80,6 +81,7 @@ def parse_decay_data(row):
     else:
         print("Ошибка: сумма вероятностей равна 0!")
         return None
+    """
     
     return {
         'nuclide': nuclide,
