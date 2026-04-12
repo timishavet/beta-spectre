@@ -207,6 +207,13 @@ def generate_events(decay_data, num_events=100):
     efficiency = len(events) / attempts * 100
     print(f"Сгенерировано {len(events)} событий из {attempts} попыток (эффективность: {efficiency:.2f}%)")
     
+    # 8. Расчет суммарной энергии
+    total_energy = sum(events)
+    mean_energy = total_energy / len(events) if len(events) > 0 else 0
+    
+    print(f"Суммарная энергия всех частиц: {total_energy:.3f} МэВ")
+    print(f"Средняя энергия на частицу: {mean_energy:.4f} МэВ")
+    
     if len(events) < num_events:
         print(f"Предупреждение: удалось сгенерировать только {len(events)} из {num_events} запрошенных событий")
     
@@ -250,7 +257,7 @@ def plot_generated_events(events, decay_data):
     plt.figure(figsize=(10, 6))
     
     # Гистограмма сгенерированных событий
-    n, bins, patches = plt.hist(events, bins=50, density=True, alpha=0.7, 
+    n, bins, patches = plt.hist(events, bins=25, density=True, alpha=0.7, 
                                color='blue', edgecolor='black', label='Сгенерированные события')
     
     # Теоретический спектр (правильно нормированный)
