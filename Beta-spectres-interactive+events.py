@@ -1,11 +1,13 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
+from scipy.special import gamma as gamma_func
 import os
 import random
 
 # Константы
-m_e = 0.511  # масса электрона в МэВ/c²
+m_e = 0.511     # масса электрона в МэВ/c²
+alpha = 1/137   # постоянная тонкой структуры
 
 def load_nuclide_database(database='beta-database.csv'):
     """Загрузка базы данных радионуклидов"""
@@ -43,6 +45,9 @@ def parse_decay_data(row):
     """Парсинг данных о распаде из строки базы данных"""
     nuclide = row['nuclide']
     half_life = row['half_life']
+    z = row['Z']
+    a = row['A']
+    decay_type = row['decay_type']
     Qbeta_mev = float(row['Qbeta_mev'])
     
     # Парсим вероятности (разделитель ';')
@@ -86,6 +91,9 @@ def parse_decay_data(row):
     return {
         'nuclide': nuclide,
         'half_life': half_life,
+        'z': z,
+        'a': a,
+        'decay_type': decay_type,
         'Qbeta_mev': Qbeta_mev,
         'max_decay_energies': max_decay_energies,
         'decay_channels': decay_channels,
@@ -96,6 +104,90 @@ def kinetic_energy_from_momentum(p):
     """Вычисление кинетической энергии из импульса"""
     T_e = np.sqrt(p**2 + m_e**2) - m_e
     return T_e
+
+def fermi_function_kinetic(z_m, decay_type, a, T_e):
+
+    """
+    Вычисляет функцию Ферми F(Z, E) для бета-распада.
+    
+    Параметры:
+    -----------
+    Z = z+-1 : int
+        Заряд дочернего ядра (Z).
+        Для β- : Z+1 положителен (ядро притягивает электрон).
+        Для β+ : Z-1 отрицателен (ядро отталкивает позитрон).
+    
+    T_e : float или ndarray
+        Кинетическая энергия бета-частицы в МэВ.
+    
+    decay_type : str
+        'b_minus' для β- или 'b_plus' для β+.
+    
+    Возвращает:
+    -----------
+    F : float или ndarray
+        Значение функции Ферми.
+    """
+    
+    # Полная энергия E = E_kin + m_e (в единицах m_e c^2)
+    E = (T_e / m_e) + 1.
+
+    
+    # Импульс p = sqrt(E^2 - 1) (в единицах m_e c)
+    p = np.sqrt(E**2 - 1.)
+    
+    # Безразмерный параметр Зоммерфельда η = ±α*Z*E/p
+    # Знак: '+' для электронов (притяжение), '-' для позитронов (отталкивание)
+    if decay_type == 'b_minus':
+        z = z_m + 1
+        eta = alpha * z * E / p
+    elif decay_type == 'b_plus':
+        z = z_m - 1
+        eta = -alpha * z * E / p
+    else:
+        raise ValueError("не указан тип распада")
+    
+    # Комплексный гамма-фактор
+    # gamma_0 = sqrt(1 - (alpha*Z)^2)
+    gamma_0 = np.sqrt(1.0 - (alpha * z)**2, dtype=complex)
+    # Если alpha*Z > 1, будет чисто мнимым — это нефизично, но оставим
+    if alpha * abs(z) >= 1.0:
+        raise ValueError(f"alpha*|z| = {alpha*abs(z):.3f} >= 1, функция Ферми не определена")
+    
+    # Гамма-функция: Γ(2*gamma_0 + 1)
+    gamma_val = gamma_func(2.0 * gamma_0 + 1.0)
+    
+    # Показатель степени: pi * eta
+    pi_eta = np.pi * eta
+    
+    # Вычисляем |Γ(gamma_0 + i*eta)|^2
+    # Используем свойство: |Γ(gamma_0 + i*eta)|^2 = Γ(gamma_0 + i*eta) * Γ(gamma_0 - i*eta)
+    gamma_complex = gamma_func(gamma_0 + 1j * eta)
+    abs_gamma_sq = np.abs(gamma_complex)**2
+    
+    # Основная формула (для релятивистского случая, точечное ядро):
+    # F(Z,E) = 2 * (gamma_0 + 1) * (2pR)^(2*gamma_0 - 2) * e^(pi*eta) * |Γ(gamma_0 + i*eta)|^2 / |Γ(2*gamma_0 + 1)|^2
+    #
+    # где R — радиус ядра в единицах комптоновской длины волны электрона.
+    # Обычно используют R = 0.426 * alpha * A^(1/3) * m_e_c2 / ħc ... 
+    # Но для бета-распада часто берут упрощенный вариант:
+    
+    R = 0.0029 * (abs(a) ** (1.0/3.0))  # приближение, ħ/(m_e c) * r0 * A^(1/3) ~ 0.0029*A^(1/3)
+       # учёл А (Для точности можно учесть A, но часто полагают A ≈ 2*Z.)
+    
+    # Множитель (2pR)^(2*gamma_0 - 2) — конечный размер ядра
+    factor_fs = (2.0 * p * R) ** (2.0 * gamma_0.real - 2.0)
+    
+    # Множитель e^(pi*eta)
+    factor_exp = np.exp(pi_eta)
+    
+    # Нормировочный множитель
+    norm = 2.0 * (gamma_0.real + 1.0) / (np.abs(gamma_val)**2)
+    
+    F = norm * factor_fs * factor_exp * abs_gamma_sq
+    
+    # Убираем мнимую часть (если есть артефакты округления)
+    return np.real_if_close(F)
 
 def spectrum_vs_momentum_single(Q, p):
     """Спектр бета-распада для одного Q-значения как функция импульса"""
@@ -119,6 +211,9 @@ def spectrum_vs_kinetic_energy_single(Q, T_e):
     return spectrum
 
 def generate_events(decay_data, num_events=100):
+    z = decay_data['z']
+    decay_type = decay_data['decay_type']
+    a = decay_data['a']
     """Генерация событий методом Монте-Карло (оптимизированная версия)"""
     print(f"\n Генерация {num_events} событий...")
     
@@ -132,17 +227,17 @@ def generate_events(decay_data, num_events=100):
     max_Q = max(Q for Q, _ in decay_channels)
     
     # 2. Создаем детальную сетку для вычисления спектра
-    T_detailed = np.linspace(0, max_Q - 0.001, 10000)
+    T_detailed = np.linspace(0.001, max_Q - 0.001, 1000)
     
     # 3. ОДИН РАЗ вычисляем суммарный спектр
     total_spectrum = np.zeros_like(T_detailed)
     
     for Q, prob in decay_channels:
         # Вычисляем спектр для этого канала
-        spectrum = spectrum_vs_kinetic_energy_single(Q, T_detailed)
+        spectrum = spectrum_vs_kinetic_energy_single(Q, T_detailed) * fermi_function_kinetic(z, decay_type, a, T_detailed)
         
         # Вычисляем площадь (интеграл) под спектром
-        area = np.trapz(spectrum, T_detailed)
+        area = np.trapezoid(spectrum, T_detailed)
         
         if area > 0:
             # Нормируем спектр на 1 и умножаем на вероятность канала
@@ -233,31 +328,31 @@ def save_events_to_file(events, nuclide):
 def plot_generated_events(events, decay_data):
     """Визуализация сгенерированных событий"""
     nuclide = decay_data['nuclide']
+    z = decay_data['z']
+    decay_type = decay_data['decay_type']
+    a = decay_data['a']
     
     # Создаем теоретический спектр
     max_Q = max(Q for Q, _ in decay_data['decay_channels'])
-    T_range = np.linspace(0, max_Q - 0.001, 1001)
+    T_range = np.linspace(0.001, max_Q - 0.001, 1001)
     total_spectrum_T = np.zeros_like(T_range)
     
     for Q, prob in decay_data['decay_channels']:
-        spectrum_T = spectrum_vs_kinetic_energy_single(Q, T_range)
-        area_T = np.trapz(spectrum_T, T_range)
+        spectrum_T = spectrum_vs_kinetic_energy_single(Q, T_range) * fermi_function_kinetic(z, decay_type, a, T_range)
+        area_T = np.trapezoid(spectrum_T, T_range)
         if area_T > 0:
             spectrum_T = spectrum_T / area_T * prob
         total_spectrum_T += spectrum_T
     
     # нормировка для сравнения с гистограммой
-    area_theoretical = np.trapz(total_spectrum_T, T_range)
-    if area_theoretical > 0:
-        total_spectrum_T_norm = total_spectrum_T / area_theoretical
-    else:
-        total_spectrum_T_norm = total_spectrum_T
+    area_theoretical = np.trapezoid(total_spectrum_T, T_range)
+    total_spectrum_T_norm = total_spectrum_T / area_theoretical
     
     # Построение графика
     plt.figure(figsize=(10, 6))
     
     # Гистограмма сгенерированных событий
-    n, bins, patches = plt.hist(events, bins=25, density=True, alpha=0.7, 
+    n, bins, patches = plt.hist(events, bins=50, density=True, alpha=0.7, 
                                color='blue', edgecolor='black', label='Сгенерированные события')
     
     # Теоретический спектр (правильно нормированный)
@@ -274,6 +369,9 @@ def plot_spectra(decay_data):
     """Построение спектров для выбранного радионуклида"""
     nuclide = decay_data['nuclide']
     half_life = decay_data['half_life']
+    z = decay_data['z']
+    decay_type = decay_data['decay_type']
+    a = decay_data['a']
     decay_channels = decay_data['decay_channels']
     
     # Создаем общий диапазон для импульса и энергии
@@ -293,13 +391,13 @@ def plot_spectra(decay_data):
     print("\nВычисление спектров...")
     for i, (Q, prob) in enumerate(decay_channels):
         spectrum_p = spectrum_vs_momentum_single(Q, p_range)
-        spectrum_T = spectrum_vs_kinetic_energy_single(Q, T_range)
+        spectrum_T = spectrum_vs_kinetic_energy_single(Q, T_range) * fermi_function_kinetic(z, decay_type, a, T_range)
         
         # Нормируем каждый спектр и умножаем на вероятность
-        area_p = np.trapz(spectrum_p, p_range)  # Площадь под кривой
+        area_p = np.trapezoid(spectrum_p, p_range)  # Площадь под кривой
         if area_p > 0:
             spectrum_p = spectrum_p / area_p * prob
-        area_T = np.trapz(spectrum_T, T_range)  # Площадь под кривой  
+        area_T = np.trapezoid(spectrum_T, T_range)  # Площадь под кривой  
         if area_T > 0:
             spectrum_T = spectrum_T / area_T * prob
         
@@ -314,13 +412,13 @@ def plot_spectra(decay_data):
 
      # Проверка для импульсных спектров
     for i, (Q, prob) in enumerate(decay_channels):
-        area_p = np.trapz(spectra_p[i], p_range)
-        area_T = np.trapz(spectra_T[i], T_range)
+        area_p = np.trapezoid(spectra_p[i], p_range)
+        area_T = np.trapezoid(spectra_T[i], T_range)
         print(f"Канал {i+1}: Q={Q:.3f} МэВ, prob={prob:.3f}, area_p={area_p:.4f}, area_T={area_T:.4f}")
 
     # Проверка суммарных спектров
-        total_area_p = np.trapz(total_spectrum_p, p_range)
-        total_area_T = np.trapz(total_spectrum_T, T_range)
+        total_area_p = np.trapezoid(total_spectrum_p, p_range)
+        total_area_T = np.trapezoid(total_spectrum_T, T_range)
         print(f"Суммарные площади: area_p={total_area_p:.4f}, area_T={total_area_T:.4f}")
     
     # Построение графиков
@@ -461,6 +559,7 @@ def plot_spectra(decay_data):
     print("\n" + "="*60)
     print(f"Параметры распада для {nuclide}:")
     print(f"Период полураспада: {half_life}")
+    print(f"Тип распада: {decay_type}")
     print(f"Количество каналов распада: {len(decay_channels)}")
     for i, (Q, prob) in enumerate(decay_channels):
         print(f"Канал {i+1}: Q = {Q:.4f} МэВ, вероятность = {prob:.1%}")
