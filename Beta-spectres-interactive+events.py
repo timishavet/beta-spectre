@@ -377,8 +377,8 @@ def plot_spectra(decay_data):
     # Создаем общий диапазон для импульса и энергии
     max_Q = max(Q for Q, _ in decay_channels)
     p_max_total = np.sqrt((max_Q + m_e)**2 - m_e**2)
-    p_range = np.linspace(0, p_max_total, 1001)
-    T_range = np.linspace(0, max_Q - 0.001, 1001)
+    p_range = np.linspace(0.001, p_max_total, 1001)
+    T_range = np.linspace(0.001, max_Q - 0.001, 1001)
     
     # Вычисляем суммарные спектры
     total_spectrum_p = np.zeros_like(p_range)
